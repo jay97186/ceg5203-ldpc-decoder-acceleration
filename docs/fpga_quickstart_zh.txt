@@ -1,0 +1,149 @@
+LDPC FPGA 啟動與固定 LLR 測試指南
+更新日期：2026-10-27
+
+一、這個流程在做什麼
+使用 Vitis 啟動 Kria 板上的 ARM 控制程式，透過 PC Bridge 將隊友的固定 LLR 傳到 DDR，再由 AXI DMA 送到 PL 的 LDPC 解碼器，結果經 DMA 回到 DDR，最後由電腦儲存圖片與指標。
+不需要插 microSD 或進入 Linux。
+
+二、接線與準備
+1. 板子接上電源，USB/JTAG 與 UART 連接電腦。
+2. 開啟 Vitis 工作區：
+   C:\Users\jay\Desktop\CEG_5203\Final_Project\ldpc_ws
+3. 開啟 RealTerm。
+   Port：COM3（目前測試使用；若 Windows 分配不同埠，以實際埠號為準）
+   Baud：115200
+   Data Bits：8
+   Parity：None
+   Stop Bits：1
+   Hardware Flow Control：None
+4. 開啟串口連線。PC Bridge 不需要佔用 COM3，RealTerm 可以保持連線。
+
+三、確認要編譯的是正確 App
+本次整張圖片固定 LLR 流程使用：ldpc_dma_test
+不要選 ldpc_dma_test_v2，也不要選 kria_cpu_baseline。
+
+程式位置：
+C:\Users\jay\Desktop\CEG_5203\Final_Project\ldpc_ws\ldpc_dma_test\src\main.c
+
+1. 左下 FLOW 的 Component 選 ldpc_dma_test。
+2. 如果改過 main.c，先 Ctrl+S，再按 Build。
+3. 確認 Output 顯示 Build Finished successfully。
+   若程式沒改過且已成功 Build，可以直接啟動。
+
+四、透過 Vitis 啟動 FPGA 加速流程
+1. 開啟 ldpc_dma_test → Settings → launch.json。
+2. 在啟動設定清單選 ldpc_dma_test_app_hw_1。
+3. 確認 Application 指向：
+   ${workspaceFolder}\ldpc_dma_test\build\ldpc_dma_test.elf
+4. 原本設定保留：Init With FSBL、Reset Entire System、Program Device 勾選。
+   Processor 為 psu_cortexa53_0，Stop at Entry 不勾。
+5. 按 launch.json 上方的三角形 ▶。
+   不要選 kria_cpu_baseline；那是 A53 CPU 比較版。
+6. Vitis 會重設板子、載入 bitstream、用 FSBL 初始化系統，再下載 ARM ELF。
+7. RealTerm 應出現：
+   LDPC FPGA RealTerm Console [HOST PROFILE]
+   Fixed dataset LLR supported ...
+   ldpc>
+   若使用未加分段計時的舊版，標題可能沒有 [HOST PROFILE]。
+
+五、啟動 PC Bridge
+1. 若舊 Bridge 還開著，先關閉舊視窗，避免兩個 Bridge 同時處理。
+2. 雙擊：
+   C:\Users\jay\Desktop\CEG_5203\Final_Project\ldpc_fpga_terminal\Start_Picture_Bridge_After_Vitis_Run.cmd
+3. 黑色視窗應出現：
+   Attaching to the program started by Vitis Run
+   Ready. Use RealTerm: llr <dataset llr.f32>, iter 20, run ...
+4. 保持黑色視窗開著。
+5. 每次重新按 Vitis Run 後，都關閉並重新啟動 Bridge。
+
+六、在 RealTerm 指定隊友的固定 LLR
+切到 Send 頁，每次先 Ctrl+A 清空輸入欄，只貼一行，按 Send ASCII 一次。
+設定每行結尾送 CR（回車）。若沒有執行回應，先補送一個 CR，不要重複貼整段。
+路徑使用正斜線 /，避免 RealTerm 將反斜線當跳脫字元。
+
+依序送出以下三行，每行各送一次：
+
+llr "C:/Users/jay/Desktop/CEG_5203/Final_Project/teamate/dataset_3db/dataset_3db/cases/image_01_awgn_3db/llr.f32"
+
+iter 20
+
+run
+
+前兩行應回 OK；run 後應出現：
+REQUEST ...: waiting for PC image preparation and FPGA DMA...
+
+這份固定資料為 image_01_awgn_3db、6081 個 codeword、Eb/N0=3 dB。
+LLR 已包含隊友產生的雜訊；此模式不重新加雜訊，不另送 snr 指令。
+iter 20 表示最多 20 輪；解碼成功的 codeword 可以 early stop。
+可送 status 確認選到的路徑與 iteration。
+
+七、等待上傳與執行
+Bridge 會顯示 FIXED INPUT、SHA256 與 Uploading LLR。
+LLR 約 9.34 MB，經 JTAG 上傳可能需要數十秒或更久；這段不算進 FPGA 計時。
+上傳期間不要再按 Vitis Run、重設板子或重複送 run。
+之後自動進行 DMA 與 PL 解碼、讀回結果及儲存圖片。
+
+八、在哪裡看 latency
+A. RealTerm：目前分段計時版會顯示：
+HOST PHASE PROFILE
+BATCH_TOTAL：整批 DMA + PL + ARM 控制總時間。
+SETUP_AND_LAUNCH：ARM 清除狀態、設定 DMA、啟動 IP 與 TX 的時間。
+WAIT_DMA_AND_IP：等待 DMA 與 IP 完成，包含 DMA、PL、串流等待與 ARM 輪詢。
+FINISH_AND_BOOKKEEPING：讀取 iteration 與部分計時記帳。
+LOOP_AND_TIMER_REMAINDER：其餘迴圈及計時開銷。
+注意：WAIT_DMA_AND_IP 不是純 PL 解碼時間，也不是純 DMA 時間。
+
+B. Bridge 黑色視窗：
+RESULT iter=20: FPGA+DMA=... ms
+這就是本次整張圖片的總 latency。
+DATASET REFERENCE: output bit mismatches=0 表示與隊友解碼參考輸出一致。
+payload_errors 是和原始資料相比的殘餘錯誤；它不一定是 0。
+
+C. 本次成功實測例：
+BATCH_TOTAL 約 1129.023 ms
+SETUP_AND_LAUNCH 22.959 ms（2.03%）
+WAIT_DMA_AND_IP 1103.122 ms（97.70%）
+FINISH_AND_BOOKKEEPING 1.641 ms
+LOOP_AND_TIMER_REMAINDER 1.298 ms
+6081 frames、平均 iteration 4.528、payload_errors=120/1179648。
+隊友參考輸出 bit mismatches=0。
+以上是實測範例，不保證每次時間完全一樣。
+
+九、結果存在哪裡
+Bridge 顯示 SAVED 和 VIEW 的完整路徑。
+通常位於：
+C:\Users\jay\Desktop\CEG_5203\Final_Project\ldpc_fpga_terminal\runs\realterm_日期時間\request_編號\
+
+常見檔案：
+results.json：時間、錯誤率與驗證指標。
+comparison_20.png：圖片比較。
+iteration_20.png：解碼後圖片。
+以實際 SAVED／VIEW 顯示的資料夾為準。
+
+十、再測一次／換資料
+同一次 Vitis 啟動與 Bridge 連線中，可直接再送 run。
+改 iteration：先送 iter 10 等有效值，再送 run。
+換固定 LLR：先送 llr "完整的新 llr.f32 路徑"，再送 iter 20、run。
+比較 CPU、GPU、FPGA 時，使用完全相同 LLR、codeword 數、演算法與迭代／early-stop 設定。
+正式測速可先暖機一次，再測五次取中位數；分段計時本身有額外 timer 開銷。
+
+十一、常見狀況
+1. 只看到 U-Boot、Waiting for PHY：
+   尚未看到 LDPC App；回 Vitis 啟動正確 launch，檢查 XSDB Console 是否下載正確 ELF。
+2. 看到 frames=16、ARM-generated AWGN：
+   啟動的是 v2 小資料測試，不是本指南的固定 LLR Bridge 流程。
+3. 一直 waiting for PC ...：
+   看 Bridge 是否已開、是否顯示 REQUEST／Uploading，或是否有錯誤。
+4. Image/LLR was not found：
+   路徑用 /，只送一個 llr 指令，不要把多個命令接在同一行。
+5. Invalid target / connect 錯誤：
+   查看 Vitis TASK: XSDB CONSOLE 的完整錯誤；先恢復 JTAG 連線再啟動。
+6. 沒有 HOST PHASE PROFILE：
+   確認 main.c 已換成分段計時版、Build 成功，且 launch 的 ELF 是 ldpc_dma_test.elf。
+
+十二、不要混淆的三個 Run
+Vitis ▶：載入並啟動板上程式。
+Start_Picture_Bridge_After_Vitis_Run.cmd：電腦端橋接，負責檔案與 JTAG 資料交換。
+RealTerm run：觸發一次實際資料測試。
+
+目前這份是 FPGA+DMA 流程分段量測。若要純 PL 核心 latency，仍需另外加入硬體計數器。

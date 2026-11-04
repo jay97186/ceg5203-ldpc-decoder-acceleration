@@ -1,0 +1,19 @@
+{
+  "n": 384,
+  "k": 194,
+  "m": 192,
+  "edges": 1152,
+  "alpha": 0.75,
+  "tests": 125,
+  "max_iteration_limits": [
+    0,
+    1,
+    2,
+    5,
+    20
+  ],
+  "matrix_seed": 5203,
+  "noise_seed": 2026,
+  "reference_sha256": "309fc2480c28221f4005c7811a84480fe4fc8bc3aa7b7015d3554b250db190c8",
+  "note": "Expected results are actual Python NMS decisions, not transmitted ground truth. Early exit matches frozen decisions."
+}

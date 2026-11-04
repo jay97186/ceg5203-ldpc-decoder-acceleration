@@ -1,0 +1,6 @@
+* text=auto
+*.tdms binary
+*.npz binary
+*.u8 binary
+*.i32 binary
+*.png binary

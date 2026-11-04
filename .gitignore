@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+rx_results/
+*.tdms_index
+zcu111_photo_link/tx/*/*_pkt*.tdms
+# build outputs (rebuild from sources)
+*.bit
+*.xsa
+*.elf
+*.dcp

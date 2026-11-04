@@ -1,0 +1,8 @@
+{
+  "xsdb": "C:/Xilinx/2025.1/Vitis/bin/xsdb.bat",
+  "hw_server_url": "tcp:127.0.0.1:3121",
+  "firmware": "hardware/controller.elf",
+  "bitstream": "hardware/ldpc_v1.bit",
+  "fsbl": "hardware/fsbl.elf",
+  "initialize_board": true
+}

@@ -1,0 +1,25 @@
+{
+  "version": "v3",
+  "pl_clock_mhz": 125,
+  "bitstream_source": "C:\\Users\\jay\\Desktop\\CEG_5203\\Final_Project\\project_v3\\ldpc_v3.xsa",
+  "fsbl_source": "C:\\Users\\jay\\Desktop\\CEG_5203\\Final_Project\\ldpc_ws\\pfv3\\export\\pfv3\\sw\\boot\\fsbl.elf",
+  "controller_source": "C:\\Users\\jay\\Desktop\\CEG_5203\\Final_Project\\ldpc_ws\\ldpc_dma_test_v3\\build\\ldpc_dma_test_v3.elf",
+  "controller_policy": "Same tested host controller ELF for all three PL versions; controller preparation/profile overhead kept consistent.",
+  "artifacts": {
+    "firmware": {
+      "path": "hardware/controller.elf",
+      "bytes": 430160,
+      "sha256": "4ee57c56a07268bbebd6d0e7ab3e23f5033b82559780edec5e6af551728d40b7"
+    },
+    "bitstream": {
+      "path": "hardware/ldpc_v3.bit",
+      "bytes": 7797864,
+      "sha256": "f640fd62e57cf4bf7e7d4f6c20f6f0c0bb9c6f14d5dd9b9649b5742ee8238c0d"
+    },
+    "fsbl": {
+      "path": "hardware/fsbl.elf",
+      "bytes": 416808,
+      "sha256": "ebcccf91dbebc379e4e01578032ea5338f4f4fa3b1fe79bd41318a00ff64b9f8"
+    }
+  }
+}

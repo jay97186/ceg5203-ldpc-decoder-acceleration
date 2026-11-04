@@ -1,0 +1,20 @@
+﻿Vitis Run -> CMD (v2)
+1. Use a separate Vitis launch configuration for v2. Keep standalone Cortex-A53 #0.
+2. Select these package files using Browse (absolute paths):
+   Bitstream: Teacher_Demo/v2/hardware/ldpc_v2.bit
+   FSBL: Teacher_Demo/v2/hardware/fsbl.elf
+   Application ELF: Teacher_Demo/v2/hardware/controller.elf
+   Use the packaged controller. A different application may have an incompatible mailbox.
+3. Enable Init with FSBL, Reset Entire System, Program Device and Reset Processor.
+   FSBL exit function: XFsbl_Exit. Disable Stop at Entry.
+4. Click Vitis Run and wait until the controller console is ready.
+5. Close old bridge/UI processes. Do NOT run another Vitis session during measurement.
+6. Double-click After_Vitis_Run_5x.cmd in this v2 folder.
+7. Teacher demo: ONLY image_01_awgn_3db (first teammate fixed LLR image). One excluded warmup + five measured runs = six decodes total. The arithmetic average uses only the five measured runs.
+8. Results are in Teacher_Demo/results/batch_TIMESTAMP/v2; summary.csv is in the session root.
+
+CMD does not reset PS/PL, program bitstream or download controller firmware.
+It briefly stops A53 only to upload LLR outside timing, then resumes it.
+Version is your selection; the mailbox cannot prove which PL bitstream is loaded.
+To change version, select the matching Vitis configuration and press Run again.
+Do not use Run_All_Versions_5x.cmd for this attach workflow.

@@ -1,0 +1,2 @@
+﻿version,case,iteration_limit,llr_sha256,mean_ms,median_ms,min_ms,max_ms,stdev_ms,measured_runs,warmup_runs,payload_bit_errors,payload_ber,mean_actual_iterations
+v3,image_01_awgn_3db,20,534fa0ed7245b4d461ecfcd53ce437f5ab72eb76d0d400228e3c3df3412cd2b0,214.1747156054089,214.17605961883558,214.16120947048262,214.18197967797698,0.008082928637657921,5,1,120,0.00010172526041666667,4.528038151619799
