@@ -97,8 +97,13 @@ def run_hardware(llr, limits, directory, initialize, event, cancel):
         initialization = f'''
 puts "UI|stage|Initializing PS, bitstream and FSBL"
 targets -set -filter {{name =~ "PSU"}}
+# Kria boots from QSPI (and then SD). Force JTAG boot mode before the system reset so the
+# QSPI boot firmware does not start and compete with the FSBL loaded below.
+# CRL_APB.BOOT_MODE_USER: use_alt=1, alt_boot_mode=0 (JTAG); cleared only by power-on reset.
+mwr 0xFF5E0200 0x0100
 rst -system
 after 1000
+puts "UI|stage|Boot mode [format 0x%X [mrd -value 0xFF5E0200]] (0x100 = JTAG); programming bitstream"
 targets -set -filter {{name =~ "PL"}}
 fpga -file {literal(config["bitstream"])}
 targets -set -filter {{name =~ "Cortex-A53 #0"}}

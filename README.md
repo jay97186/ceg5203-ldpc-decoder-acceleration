@@ -41,6 +41,25 @@ Raw data: `results/kria_fpga/v*_summary.csv`, per-run records `results/kria_fpga
 The FPGA number is **FPGA + DMA latency**, not a pure PL-core latency. PL clock and CPU
 clock are configuration values (A53 1,333,333,008 Hz; timer 99,999,001 Hz).
 
+## Real RF channel decoded on the Kria FPGA
+
+The ZCU111 photo link (`zcu111_photo_link/`) and the Kria decoder are connected: an ADC capture of the
+QPSK 30×30 photo is demodulated on the PC, and its LLRs (8 codewords) are decoded by the HLS decoder in
+the Kria PL through the ADC Capture UI (`host/teacher_demo/vN/Start_ADC_Capture_UI.cmd`).
+
+Board test, HLS **v3**, capture `qpsk30_pep-5p2dB` (DAC −5.2 dBFS, 303 / 3072 channel bit errors):
+
+| Iteration limit | FPGA + DMA | Remaining bit errors | Image | FPGA vs PC NMS |
+|---|---|---|---|---|
+| 0 | 0.130 ms | 303 | CRC failed | 0 bits |
+| 15 | 0.394 ms | 0 | CRC OK | 0 bits |
+| 20 | 0.396 ms | 0 | CRC OK | 0 bits |
+
+Mean actual iterations at limits 15 and 20: 8.00 (read from the PL decoder's register), matching the
+per-codeword convergence of the PC reference (3, 8, 7, 7, 3, 7, 14, 15). With only 8 codewords the time is
+dominated by per-codeword control and DMA, so it is not comparable with the full-image latency above.
+Single run; only v3 was tested with the ADC capture.
+
 ## Decoder
 
 | Item | Value |
@@ -57,7 +76,11 @@ PC helper ──JTAG──> PS DDR (LLRs)            RealTerm/UART: commands + s
           Cortex-A53 host ──AXI DMA──> PL nms_decode_axis (HLS) ──AXI DMA──> PS DDR (decoded bits)
 ```
 
-The board runs standalone (no Linux); Vitis launches the A53 controller over JTAG.
+The board runs standalone (no Linux, no SD card). The PC tools in `host/teacher_demo/` drive XSDB
+(installed with Vitis) directly: switch the boot mode to JTAG, reset, program the bitstream, run the FSBL,
+download the controller ELF, upload LLRs to DDR and read the decoded bits back — the same steps as a
+Vitis *Run*, without opening the IDE. The controller only configures AXI DMA, starts the HLS IP and
+polls it; there is no software decoder in the firmware.
 
 ## Repository layout
 
@@ -66,10 +89,10 @@ The board runs standalone (no Linux); Vitis launches the A53 controller over JTA
 | `hls/common/` | HLS top `nms_decode_axis` (AXI-Stream wrapper), headers, code tables, C/RTL testbench and test vectors (identical for v1–v3) |
 | `hls/v1`, `hls/v2`, `hls/v3` | `nms_decoder.cpp` of each version (the only file that changes) |
 | `hls/step1_reference/` | first non-AXIS HLS reference and `generate_vectors.py` (builds `nms_tables.h` / `nms_vectors.h`) |
-| `vivado/v1..v3/design_1.bd` | Vivado block designs (Zynq UltraScale+ PS, AXI DMA, HLS IP) |
+| `vivado/v1..v3/` | Vivado block designs (`design_1.bd`) and the exported hardware (`ldpc_vN.xsa`, includes the bitstream) used on the board |
 | `firmware/kria_fpga_host/` | Vitis standalone A53 controller for the FPGA path (DMA, timer, RealTerm commands) and the HLS-generated driver |
 | `firmware/kria_a53_baseline/` | A53 plain-C NMS baseline, XSDB scripts, analysis scripts and the raw timer reports |
-| `host/teacher_demo/` | PC tools used for the demonstration: JTAG bridge, fixed-LLR runner (1 warm-up + 5 runs), UI |
+| `host/teacher_demo/` | PC tools used for the demonstration: XSDB/JTAG bridge, fixed-LLR batch runner (1 warm-up + 5 runs) and three UIs with one result card per iteration limit — Custom image, Fixed teammate LLR, and **ZCU111 ADC capture → Kria FPGA** (`ADC_Capture_使用說明.txt`) |
 | `results/kria_fpga/` | per-version summary CSVs (mean/median/min/max, payload errors, iterations) |
 | `docs/` | HLS / Vivado screenshots, board start-up guide (Chinese) |
 | `teammate/` | XIONG BINZHI's PC CPU decoder (`pc_cpu/LDPC.c`) and dataset generator (code tables, images, manifest) |
@@ -84,7 +107,8 @@ The board runs standalone (no Linux); Vitis launches the A53 controller over JTA
 - **Vivado**: block design with the Zynq UltraScale+ PS, AXI DMA and the exported HLS IP
   (`vivado/vN/design_1.bd`); generate the bitstream and export the `.xsa`.
 - **Vitis**: platform from the `.xsa`, standalone A53 application from `firmware/kria_fpga_host/`.
-- Bitstreams, `.xsa` and ELF files are not included; they are rebuilt from the sources above.
+- The exported `.xsa` of v1–v3 is included (`vivado/vN/`); stand-alone `.bit` and ELF files are not,
+  they are rebuilt from the `.xsa` and the sources above.
 
 The helper scripts (`*.cmd`, `*.tcl`, some JSON configs) were written for the original lab
 PC and contain its absolute paths; adjust them before use.

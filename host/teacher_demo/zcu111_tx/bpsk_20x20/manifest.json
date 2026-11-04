@@ -1,0 +1,140 @@
+{
+  "source": "images/wolfram.png",
+  "width": 20,
+  "height": 20,
+  "color": "grayscale, 4 tones",
+  "resize": "majority tone per cell + small black features kept at their centroid",
+  "palette": [
+    0,
+    55,
+    165,
+    255
+  ],
+  "huffman": {
+    "width": 20,
+    "height": 20,
+    "table": [
+      {
+        "value": 255,
+        "length": 1,
+        "code": "0"
+      },
+      {
+        "value": 0,
+        "length": 2,
+        "code": "10"
+      },
+      {
+        "value": 55,
+        "length": 3,
+        "code": "110"
+      },
+      {
+        "value": 165,
+        "length": 3,
+        "code": "111"
+      }
+    ],
+    "header_sent": true,
+    "header_bits": 88,
+    "data_bits": 649,
+    "crc_bits": 16,
+    "total_bits": 753,
+    "raw_bits": 3200
+  },
+  "compression_ratio": 4.25,
+  "ldpc": {
+    "N": 384,
+    "K": 194,
+    "codewords": 4,
+    "info_capacity_bits": 776,
+    "zero_padding_bits": 23,
+    "coded_bits": 1536,
+    "parity_ok": true
+  },
+  "modulation": {
+    "type": "real BPSK, rectangular pulses",
+    "fs_dac_hz": 6512640000.0,
+    "fs_adc_hz": 4096000000.0,
+    "carrier_hz": 407040000.0,
+    "samples_per_symbol": 16,
+    "symbol_rate_hz": 407040000.0,
+    "preamble_symbols": 48,
+    "preamble_seed": 5203,
+    "digital_amplitude_peak": 8191,
+    "tdms_group": "sig",
+    "tdms_channel": "I",
+    "dac_buffer_limit_samples": 32768
+  },
+  "files": [
+    {
+      "file": "photo20_all_bpsk_407p04MHz.tdms",
+      "codewords": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "symbols": 1584,
+      "dac_samples": 25440,
+      "dac_bytes": 50880,
+      "period_us": 3.90625,
+      "adc_samples_per_period": 16000,
+      "sha256": "a97918f8b822366c99e7ea6480fb73b21c50a3f29365e8ebd274b381a827cd80"
+    },
+    {
+      "file": "photo20_pkt1_bpsk_407p04MHz.tdms",
+      "codewords": [
+        0
+      ],
+      "symbols": 432,
+      "dac_samples": 10176,
+      "dac_bytes": 20352,
+      "period_us": 1.5625,
+      "adc_samples_per_period": 6400,
+      "sha256": "dda2efe48f0e12a2df91ae032dd958aa41dfb6e7323182902d2fe755bd498ef4"
+    },
+    {
+      "file": "photo20_pkt2_bpsk_407p04MHz.tdms",
+      "codewords": [
+        1
+      ],
+      "symbols": 432,
+      "dac_samples": 10176,
+      "dac_bytes": 20352,
+      "period_us": 1.5625,
+      "adc_samples_per_period": 6400,
+      "sha256": "a095fbcaf377d562bdb9ac28a004aae1afe888d2941ea3b82f254efb7b0b4fe6"
+    },
+    {
+      "file": "photo20_pkt3_bpsk_407p04MHz.tdms",
+      "codewords": [
+        2
+      ],
+      "symbols": 432,
+      "dac_samples": 10176,
+      "dac_bytes": 20352,
+      "period_us": 1.5625,
+      "adc_samples_per_period": 6400,
+      "sha256": "a3f52bc00d17ffc6f14283a28f94c6b1a90f5c92adc9b952070a0413f24ac388"
+    },
+    {
+      "file": "photo20_pkt4_bpsk_407p04MHz.tdms",
+      "codewords": [
+        3
+      ],
+      "symbols": 432,
+      "dac_samples": 10176,
+      "dac_bytes": 20352,
+      "period_us": 1.5625,
+      "adc_samples_per_period": 6400,
+      "sha256": "0e8ef9af024f907be1acb4a476a3bcbe910f8c541ff74f68dfae99799c7abfa6"
+    }
+  ],
+  "added_noise": false,
+  "offline_roundtrip": {
+    "all": "PASS",
+    "packets": "PASS"
+  },
+  "hardware_roundtrip": "NOT TESTED"
+}

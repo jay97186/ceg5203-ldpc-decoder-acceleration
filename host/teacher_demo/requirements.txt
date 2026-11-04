@@ -1,2 +1,3 @@
 numpy
 Pillow
+npTDMS>=1.7

@@ -6,6 +6,5 @@ rx_results/
 zcu111_photo_link/tx/*/*_pkt*.tdms
 # build outputs (rebuild from sources)
 *.bit
-*.xsa
 *.elf
 *.dcp

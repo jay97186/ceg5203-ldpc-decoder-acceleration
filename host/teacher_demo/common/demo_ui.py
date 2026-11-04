@@ -1,107 +1,193 @@
-"""English monochrome fixed-LLR demonstration, one run per iteration budget."""
-from pathlib import Path
+"""Fixed teammate LLR on the Kria FPGA, same layout as the Custom Image UI:
+one card per FPGA iteration limit. Uses the verified run_case pipeline
+(manifest integrity checks, dataset reference comparison at 20 iterations).
+"""
 from datetime import datetime
 import argparse, os, queue, threading, tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
+from PIL import Image
 import numpy as np
-from codec import Codec,reconstruct
-from demo_runner import ROOT, DATASET, cases, configure, run_case, BoardLock, parse_limits
+import fpga_bridge as bridge
+import demo_runner
+from codec import Codec, reconstruct
+from demo_runner import ROOT, DATASET, cases, configure, run_case, BoardLock
+from lab_ui import LabLayout, GOOD, BAD, INK
 
-class App(tk.Tk):
-    def __init__(self,version):
-        super().__init__()
-        self.title('LDPC FPGA | Teacher Demonstration')
-        self.geometry('1320x880');self.minsize(1000,700);self.configure(bg='white')
-        style=ttk.Style(self);style.theme_use('clam')
-        style.configure('.',background='white',foreground='#111111',font=('Segoe UI',11))
-        style.configure('TButton',padding=8,background='#eeeeee',foreground='black')
-        self.items=cases();self.events=queue.Queue();self.cancel=threading.Event()
-        self.busy=False;self.photos=[];self.folder=ROOT/'results'
-        top=ttk.Frame(self,padding=16);top.pack(fill='x')
-        ttk.Label(top,text='LDPC FPGA — Fixed Teammate LLR',font=('Segoe UI',21,'bold')).pack(anchor='w')
-        ttk.Label(top,text='AWGN Eb/N0 = 3 dB | Original float32 LLR | No regenerated noise | Single run per iteration limit').pack(anchor='w',pady=(8,12))
-        bar=ttk.Frame(top);bar.pack(fill='x')
-        self.version=tk.StringVar(value=version);self.case=tk.StringVar(value=self.items[0]['id'])
-        self.limits=tk.StringVar(value='1,2,5,10,20')
-        ttk.Label(bar,text='Hardware').pack(side='left')
-        self.vbox=ttk.Combobox(bar,textvariable=self.version,values=['v1','v2','v3'],state='readonly',width=5);self.vbox.pack(side='left',padx=8)
-        ttk.Label(bar,text='Image').pack(side='left')
-        self.cbox=ttk.Combobox(bar,textvariable=self.case,values=[c['id'] for c in self.items],state='readonly',width=25);self.cbox.pack(side='left',padx=8)
-        ttk.Label(bar,text='Iteration limits').pack(side='left')
-        self.entry=ttk.Entry(bar,textvariable=self.limits,width=18);self.entry.pack(side='left',padx=8)
-        self.run=ttk.Button(bar,text='Run FPGA',command=self.start);self.run.pack(side='left',padx=8)
-        ttk.Button(bar,text='Open results',command=lambda:os.startfile(self.folder)).pack(side='left',padx=8)
-        self.progress=ttk.Progressbar(top,mode='indeterminate');self.progress.pack(fill='x',pady=(14,0))
-        images=ttk.Frame(self,padding=12);images.pack(fill='x')
-        self.labels=[]
-        for i,title in enumerate(['Original','Noisy received (fixed LLR)','FPGA decoded']):
-            frame=ttk.Frame(images);frame.pack(side='left',expand=True,fill='both')
-            ttk.Label(frame,text=title,font=('Segoe UI',13,'bold')).pack()
-            label=ttk.Label(frame,anchor='center');label.pack(pady=10);self.labels.append(label)
-        columns=('limit','ms','errors','ber','iterations','reference')
-        self.table=ttk.Treeview(self,columns=columns,show='headings',height=7)
-        for key,title in zip(columns,['Iteration limit','FPGA + DMA (ms)','Payload errors','Payload BER','Mean iterations','Reference mismatches']):
-            self.table.heading(key,text=title);self.table.column(key,width=170,anchor='center')
-        self.table.pack(fill='x',padx=24,pady=8)
-        ttk.Label(self,text='Timing includes ARM control, AXI DMA and PL decoding. Excludes PC preparation, JTAG transfer and image rendering.').pack(anchor='w',padx=24)
-        self.status=tk.StringVar(value='Ready. Close other board controllers. This UI initializes the selected hardware automatically.')
-        ttk.Label(self,textvariable=self.status,wraplength=1220).pack(fill='x',padx=24,pady=8)
-        self.log=tk.Text(self,height=6,bg='#f5f5f5',fg='black',font=('Consolas',10));self.log.pack(fill='both',expand=True,padx=24,pady=(0,14))
-        self.cbox.bind('<<ComboboxSelected>>',lambda _:self.preview())
-        self.protocol('WM_DELETE_WINDOW',self.close);self.preview();self._poll_id=self.after(100,self.poll)
-    def show_image(self,index,image):
-        im=image.copy();im.thumbnail((390,290));photo=ImageTk.PhotoImage(im)
-        self.labels[index].configure(image=photo)
-        while len(self.photos)<=index:self.photos.append(None)
-        self.photos[index]=photo
+LIMITS = [0, 1, 2, 3, 5, 10, 20]
+
+
+class FixedLab:
+    def __init__(self, root, version):
+        self.root = root
+        self.items = cases(); self.events = queue.Queue(); self.cancel = threading.Event()
+        self.busy = False; self.folder = ROOT / 'results'; self.count = 0; self.total = 0
+        self.codec = Codec()
+        ui = self.ui = LabLayout(root, 'LDPC FPGA Fixed-LLR Lab', 'Teammate AWGN 3 dB LLR → NMS → AXI DMA',
+                                 'HARDWARE MODE', 'One fixed noisy input. Multiple FPGA iteration limits.')
+        ui.footer.configure(text='FPGA time includes ARM control, TX/RX DMA and decoding. Dataset loading, '
+                                 'JTAG, image rendering and display are excluded.\nOriginal float32 teammate LLR, '
+                                 'copied byte-for-byte; no regenerated noise.')
+
+        ui.heading('01  FIXED TEAMMATE LLR')
+        self.case = tk.StringVar(value=self.items[0]['id'])
+        box = ui.combo(self.case, [c['id'] for c in self.items], 'Dataset case (256 × 192, Eb/N0 3 dB)')
+        box.bind('<<ComboboxSelected>>', lambda _: self.preview())
+
+        ui.heading('02  HARDWARE')
+        self.version = tk.StringVar(value=version)
+        ui.combo(self.version, ['v1', 'v2', 'v3'], 'Decoder version on the Kria PL')
+
+        ui.heading('03  ITERATION LIMITS')
+        self.limits = ui.iteration_boxes(LIMITS, [0, 1, 2, 5, 10, 20])
+
+        ui.heading('04  FPGA CONNECTION')
+        ui.startup_selector()
+        ui.button('Check JTAG connection', self.check_connection)
+        self.run_button = ui.button('Run FPGA comparison', self.start, style='Primary.TButton')
+        self.cancel_button = ttk.Button(ui.controls, text='Cancel run', command=self.cancel_run, state='disabled')
+        self.cancel_button.pack(fill='x', pady=3)
+        ttk.Button(ui.controls, text='Open results folder', command=self.open_folder).pack(fill='x', pady=(12, 3))
+        ui.button('ZCU111 ADC capture...', self.open_adc)
+        ui.note('Close Vitis debug sessions and other board UIs before running. Uses local hw_server on port 3121.')
+        self.preview()
+        self.root.after(80, self.poll)
+
+    def selected_case(self):
+        return next(c for c in self.items if c['id'] == self.case.get())
+
     def preview(self):
-        c=next(c for c in self.items if c['id']==self.case.get())
-        with Image.open(DATASET/c['image']) as im:self.show_image(0,im.convert('RGB'))
-        llr=np.fromfile(DATASET/c['llr'],dtype='<f4').reshape(-1,384)
-        self.show_image(1,reconstruct(Codec(),(llr<0).astype('u1'),(256,192)))
-        self.labels[2].configure(image='');self.table.delete(*self.table.get_children())
-    def start(self):
-        try:limits=parse_limits(self.limits.get());configure(self.version.get())
-        except Exception as exc:messagebox.showerror('Settings',str(exc));return
-        self.busy=True;self.cancel.clear();self.run.configure(state='disabled')
-        self.vbox.configure(state='disabled');self.cbox.configure(state='disabled');self.entry.configure(state='disabled')
-        self.table.delete(*self.table.get_children());self.progress.start()
-        version=self.version.get();case=next(c for c in self.items if c['id']==self.case.get())
-        self.folder=ROOT/'results'/('ui_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))/version/case['id']
+        if self.busy:
+            return
+        c = self.selected_case(); ui = self.ui
+        with Image.open(DATASET / c['image']) as im:
+            original = im.convert('RGB')
+        llr = np.fromfile(DATASET / c['llr'], dtype='<f4').reshape(-1, 384)
+        hard = (llr < 0).astype('u1')
+        bits = np.unpackbits(np.asarray(original, dtype='u1').reshape(-1), bitorder='big')
+        errors = int(np.count_nonzero(self.codec.payload(hard, bits.size) != bits))
+        ui.clear_cards()
+        ui.add_card('Original image / Reference', original, f'{original.width} × {original.height} RGB',
+                    f'{bits.size:,} payload bits → {len(llr):,} LDPC(384,194) codewords.')
+        ui.add_card('Channel output / No decoding', reconstruct(self.codec, hard, original.size),
+                    f'Payload bit errors {errors:,}  |  BER {errors / bits.size:.3e}',
+                    'Teammate fixed float32 LLR (AWGN Eb/N0 3 dB), hard decisions only.', BAD)
+        ui.summary_label.configure(text=f'{c["id"]}  ·  {original.width} × {original.height} RGB  ·  {len(llr):,} codewords  ·  '
+                                        f'N=384 / K=194  ·  Eb/N₀ 3 dB  ·  fixed teammate LLR')
+        ui.status.set('Ready. Choose the hardware version and iteration limits, then run the FPGA.')
+
+    def prepare_hardware(self):
+        mode = self.ui.startup_mode()
+        demo_runner.ATTACH_RUNNING = mode['attach']  # read by configure()
+        configure(self.version.get())
+        return mode
+
+    def check_connection(self):
+        try:
+            self.prepare_hardware()
+        except Exception as exc:
+            messagebox.showerror('Hardware', str(exc)); return
+        self.busy = True; self.ui.set_busy(True, None); self.ui.status.set('Checking JTAG / hw_server...')
+
         def worker():
             try:
-                with BoardLock():run_case(version,case,limits,self.folder,False,True,lambda k,m:self.events.put((k,m)),self.cancel)
-                self.events.put(('done',str(self.folder)))
-            except Exception as exc:self.events.put(('error',str(exc)))
-        threading.Thread(target=worker,daemon=True).start()
+                bridge.probe(lambda *_: None)
+                self.events.put(('connection', 'Cortex-A53 #0 detected. JTAG connection is ready.'))
+            except Exception as exc:
+                self.events.put(('error', str(exc)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def start(self):
+        limits = sorted(n for n, v in self.limits.items() if v.get())
+        if not limits:
+            messagebox.showerror('Iteration limits', 'Select at least one iteration limit.'); return
+        try:
+            mode = self.prepare_hardware()
+        except Exception as exc:
+            messagebox.showerror('Hardware', str(exc)); return
+        version, case = self.version.get(), self.selected_case()
+        self.folder = ROOT / 'results' / ('ui_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f')) / version / case['id']
+        self.preview()
+        self.cancel.clear(); self.busy = True; self.ui.set_busy(True, self.cancel_button)
+        self.count, self.total = 0, len(limits)
+        self.ui.status.set(f'{version}: starting the FPGA ({self.ui.startup.get()}).')
+
+        def worker():
+            try:
+                with BoardLock():
+                    run_case(version, case, limits, self.folder, False, mode['initialize'],
+                             lambda k, m: self.events.put((k, m)), self.cancel)
+                self.events.put(('done', str(self.folder)))
+            except bridge.Cancelled:
+                self.events.put(('cancelled', 'Run cancelled. Completed results remain in the output folder.'))
+            except Exception as exc:
+                self.events.put(('error', str(exc)))
+        threading.Thread(target=worker, daemon=True).start()
+
     def poll(self):
+        ui = self.ui
         try:
             while True:
-                kind,msg=self.events.get_nowait()
-                if kind=='sample':
-                    r=msg['record']
-                    with Image.open(msg['image']) as im:self.show_image(2,im)
-                    ref=r.get('dataset_reference_bit_mismatches')
-                    self.table.insert('','end',values=(r['iteration_limit'],f"{r['fpga_dma_ms']:.3f}",r['payload_bit_errors'],f"{r['payload_ber']:.8g}",f"{r['mean_actual_iterations']:.3f}",'N/A (reference is limit 20)' if ref is None else ref))
-                elif kind in ('stage','progress'):
-                    self.status.set(str(msg));self.log.insert('end',str(msg)+'\n');self.log.see('end')
-                elif kind in ('done','error'):
-                    self.busy=False;self.progress.stop();self.run.configure(state='normal')
-                    self.vbox.configure(state='readonly');self.cbox.configure(state='readonly');self.entry.configure(state='normal')
-                    self.status.set(('Saved: ' if kind=='done' else 'ERROR: ')+str(msg))
-                    if kind=='error':messagebox.showerror('FPGA run',str(msg))
-        except queue.Empty:pass
-        self._poll_id=self.after(100,self.poll)
-    def destroy(self):
-        if hasattr(self,'_poll_id'):
-            self.after_cancel(self._poll_id)
-        super().destroy()
-    def close(self):
+                kind, msg = self.events.get_nowait()
+                if kind == 'sample':
+                    r = msg['record']
+                    self.count += 1; ui.progress['value'] = 100 * self.count / max(self.total, 1)
+                    with Image.open(msg['image']) as im:
+                        image = im.convert('RGB')
+                    psnr = '∞' if r.get('exact_image') else f"{r['psnr_db']:.2f}"
+                    ref = r.get('dataset_reference_bit_mismatches')
+                    ref_text = 'teammate reference: compared at limit 20' if ref is None else f'teammate reference mismatches: {ref} bits'
+                    ui.add_card(f"FPGA {r['version']} / Iteration limit {r['iteration_limit']}", image,
+                                f"Errors {r['payload_bit_errors']:,} bits  |  BER {r['payload_ber']:.3e}\n"
+                                f"PSNR {psnr} dB  |  FPGA + DMA {r['fpga_dma_ms']:.3f} ms",
+                                f"Actual mean {r['mean_actual_iterations']:.2f} iterations / max {r['max_actual_iterations']}\n"
+                                f"Unsatisfied checks: {r['unsatisfied_frames']:,} codewords  |  {ref_text}",
+                                GOOD if r.get('exact_image') else INK)
+                elif kind == 'stage':
+                    ui.status.set(str(msg))
+                elif kind == 'done':
+                    self.finish(f'Completed {self.count} FPGA runs. Saved: {msg}')
+                elif kind in ('connection', 'cancelled'):
+                    self.finish(str(msg))
+                elif kind == 'error':
+                    self.finish('Run failed. Check board power, JTAG, hw_server and the start-up mode.')
+                    messagebox.showerror('FPGA operation failed', str(msg))
+        except queue.Empty:
+            pass
+        self.root.after(80, self.poll)
+
+    def finish(self, text):
+        self.busy = False; self.ui.set_busy(False, self.cancel_button); self.ui.status.set(text)
+        if self.count and self.count == self.total:
+            self.ui.progress['value'] = 100
+
+    def cancel_run(self):
+        self.cancel.set()
+        self.ui.status.set('Cancellation requested. Waiting for the current JTAG transfer or codeword...')
+
+    def open_folder(self):
+        self.folder.mkdir(parents=True, exist_ok=True); os.startfile(str(self.folder))
+
+    def open_adc(self):
         if self.busy:
-            messagebox.showinfo('FPGA running','Wait for the current run to finish before closing.');return
+            messagebox.showinfo('FPGA running', 'Wait for the current run to finish first.'); return
+        import adc_ui
+        adc_ui.open_window(self.root, self.version.get())
+
+
+class App(tk.Tk):
+    """Kept for compatibility: demo_ui.App(version)."""
+    def __init__(self, version='v3'):
+        super().__init__()
+        self.title(f'LDPC {version} | Fixed teammate LLR'); self.geometry('1440x960'); self.minsize(1080, 740)
+        self.lab = FixedLab(self, version)
+        self.protocol('WM_DELETE_WINDOW', self.close)
+
+    def close(self):
+        if self.lab.busy:
+            messagebox.showinfo('FPGA running', 'Wait for the current run to finish before closing.'); return
         self.destroy()
 
-if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--version',default='v3',choices=['v1','v2','v3']);a=p.parse_args()
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser(); p.add_argument('--version', default='v3', choices=['v1', 'v2', 'v3']); a = p.parse_args()
     App(a.version).mainloop()

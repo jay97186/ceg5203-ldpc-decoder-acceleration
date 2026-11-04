@@ -1,0 +1,50 @@
+ZCU111 ADC 擷取檔 / 隊友固定 LLR -> Kria FPGA LDPC 解碼（Lab 版面）
+=================================================================
+
+三個 UI 現在是同一種版面（跟 Custom Image UI 一樣）：
+  左邊 01～04 步驟設定，右邊卡片牆：
+  原圖 -> 沒有解碼的通道輸出 -> 每個迭代上限一張 FPGA 解碼卡片
+  （剩餘錯誤、BER / CRC、FPGA + DMA 時間、實際平均迭代次數）
+
+啟動檔（v1 / v2 / v3 資料夾各一份）
+  Start_ADC_Capture_UI.cmd     ZCU111 實際 ADC 擷取 -> FPGA 解碼
+  Start_Fixed_LLR_UI.cmd       隊友固定 LLR（AWGN 3 dB）-> FPGA 解碼
+                               左欄最下面「ZCU111 ADC capture...」也能開 ADC 視窗
+  Start_Custom_Image_UI.cmd    自選圖片 + 產生 AWGN（原本的，沒有修改）
+
+ADC Capture UI 操作
+  01 ADC CAPTURE     Choose capture (.tdms)... 選擷取檔
+                     （預設資料夾 C:\Xilinx\RF_DC_Evaluation_UI\Data\ADC）
+                     Transmitted waveform：QPSK 30x30 / BPSK 20x20
+                     檔名含 bpsk 或 rx_all 自動選 BPSK，其他預設 QPSK
+                     選好立刻在 PC 解調，前兩張卡片顯示原圖與通道輸出
+  02 HARDWARE        v1 / v2 / v3
+  03 ITERATION LIMITS 勾選 0,1,2,3,5,10,15,20
+  04 FPGA CONNECTION Board start-up 三選一：
+       Automatic: reset + bitstream + FSBL   自動初始化（預設）
+       Firmware only                          bitstream 已經燒好，只重載控制程式
+       Attach to Vitis Run (no reset)         先在 Vitis 按對應版本的 Run，再接上
+     -> Run FPGA comparison
+
+  推薦擷取檔：rx_q30_-5p2dB_02.tdms（QPSK，第 15 次迭代才完全修好）
+
+ADC 卡片欄位
+  Remaining errors     FPGA 輸出跟發送 codeword 比，還剩幾個 bit 錯
+  payload              圖片資料部分的錯誤
+  CRC OK — image exact 整張圖完全正確（綠色標題）
+  Unconverged codewords parity check 還沒通過的 codeword 數
+  FPGA vs PC NMS       FPGA 輸出跟 PC 版 NMS 逐位比對，應該是 0
+
+輸出
+  ADC：   results\adc_日期時間\版本\擷取檔名\
+          capture_info.json、input_llr.f32、transmitted.png、received_no_ldpc.png、
+          decoded_limit_N.u8、fpga_decoded_limit_N.png、runs.csv、transport\（JTAG 紀錄）
+  固定 LLR：results\ui_日期時間\版本\case\（跟原本一樣）
+
+注意
+  - 計時只包含 FPGA + DMA，不包含 PC 解調和 JTAG。
+    ADC 擷取只有 4 或 8 個 codeword，FPGA 時間很短，主要是控制和 DMA 開銷。
+  - 自動初始化出現 "DDR controller is not initialized" 或 "target has not halted"：
+    板子斷電重開，或改用 Attach to Vitis Run。
+  - 發送參考資料在 zcu111_tx\，只用來計算錯誤，不參與解碼。
+  - 修改前的程式備份在 common\backups\
