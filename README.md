@@ -1,13 +1,13 @@
-# LDPC Decoder Acceleration on Kria K26: Cortex-A53 vs. HLS FPGA
+# LDPC Decoder Acceleration on Kria KV260: Cortex-A53 vs. HLS FPGA
 
 NUS CEG5203 final project. A QC-LDPC(384,194) Normalized Min-Sum decoder is used to
 recover an image sent through a noisy channel, and the same decoding task is run on
-the Kria K26 Cortex-A53 CPU and on an HLS accelerator in the programmable logic (PL),
+the Kria KV260 Cortex-A53 CPU and on an HLS accelerator in the programmable logic (PL),
 connected through AXI DMA. Three HLS versions (v1 → v3) were measured on the board.
 
 Team: LIN KAI-CHIEH, XIONG BINZHI
 
-## Results (Kria K26, measured on the board)
+## Results (Kria KV260, measured on the board)
 
 Same input for every platform: teammate dataset `image_01_awgn_3db`
 (256×192 RGB, 1,179,648 payload bits, 6,081 codewords, Eb/N0 3 dB, LLR SHA-256 `534fa0ed…`),
